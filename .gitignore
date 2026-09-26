@@ -1,0 +1,10 @@
+# secrets
+.env
+
+# local environment / IDE
+.venv/
+.idea/
+__pycache__/
+
+# generated at runtime by init_database()
+munder_difflin.db
