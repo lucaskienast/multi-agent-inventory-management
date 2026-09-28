@@ -605,6 +605,21 @@ MODEL_ID = os.getenv("AGENT_MODEL_ID", "gpt-4o-mini")
 AGENT_VERBOSITY = int(os.getenv("AGENT_VERBOSITY", "1"))
 
 
+class SequentialToolCallModel(OpenAIServerModel):
+    """OpenAI-compatible model that asks for one tool call per step.
+
+    With parallel tool calls the model sometimes combines a delegation with final_answer in the
+    same step; smolagents rejects such steps, which made the orchestrator loop until max_steps.
+    The flag is only sent when tools are offered (the API rejects it otherwise).
+    """
+
+    def _prepare_completion_kwargs(self, *args, **kwargs):
+        completion_kwargs = super()._prepare_completion_kwargs(*args, **kwargs)
+        if completion_kwargs.get("tools"):
+            completion_kwargs["parallel_tool_calls"] = False
+        return completion_kwargs
+
+
 def build_model() -> OpenAIServerModel:
     """Create the chat model.
 
@@ -613,10 +628,10 @@ def build_model() -> OpenAIServerModel:
     """
     udacity_key = os.getenv("UDACITY_OPENAI_API_KEY")
     if udacity_key:
-        return OpenAIServerModel(model_id=MODEL_ID, api_base=VOCAREUM_API_BASE, api_key=udacity_key)
+        return SequentialToolCallModel(model_id=MODEL_ID, api_base=VOCAREUM_API_BASE, api_key=udacity_key)
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
-        return OpenAIServerModel(model_id=MODEL_ID, api_key=openai_key)  # default OpenAI endpoint
+        return SequentialToolCallModel(model_id=MODEL_ID, api_key=openai_key)  # default OpenAI endpoint
     raise RuntimeError("Set UDACITY_OPENAI_API_KEY (Udacity proxy) or OPENAI_API_KEY in project/.env")
 
 
@@ -627,7 +642,7 @@ def build_model() -> OpenAIServerModel:
 # Full product catalog keyed by exact item name (the DB only stocks a subset of it)
 CATALOG: Dict[str, Dict] = {item["item_name"]: item for item in paper_supplies}
 
-# Used when a customer gives no delivery deadline
+# Used when a customer gives no (valid) delivery deadline
 DEFAULT_DELIVERY_WINDOW_DAYS = 14
 
 # The catalog unit_price is the customer list price (as used in the historical quotes). The
@@ -638,19 +653,36 @@ SUPPLIER_COST_RATE = 0.70
 # Bulk discount by total units in the quote: (minimum units, discount rate), checked top-down
 BULK_DISCOUNT_TIERS = [(10_000, 0.15), (2_000, 0.10), (500, 0.05), (0, 0.0)]
 
-# Quotes issued by the quoting agent, looked up by fulfill_order so that the sales agent books
-# exactly the quoted lines and prices (the LLM only ever passes the quote_id around).
+# Quotes issued in this session, looked up by fulfill_order so that the sales agent books exactly
+# the quoted lines and prices (the LLM only ever passes the quote_id around).
 QUOTES: Dict[str, Dict] = {}
 
-# (item_name, request_date) -> date on which restocked goods reach us, i.e. the earliest date the
-# customer can receive that item. Written by restock_item, read by fulfill_order.
-CUSTOMER_AVAILABILITY_DATES: Dict[tuple, str] = {}
+# The customer order currently being processed. This is the shared state all agents work on:
+# the request date is set by Python from the request text, the orchestrator registers items and
+# deadline once (match_catalog_items), and every later tool reads from here instead of trusting
+# dates, item names or quantities re-typed by an LLM.
+CURRENT_ORDER: Dict = {}
 
 
 def reset_session_state() -> None:
     """Clear in-process state; call together with init_database() so both start fresh."""
     QUOTES.clear()
-    CUSTOMER_AVAILABILITY_DATES.clear()
+    CURRENT_ORDER.clear()
+
+
+def start_order(request_date: str) -> None:
+    """Begin a new customer order for the given request date (called once per request)."""
+    CURRENT_ORDER.clear()
+    CURRENT_ORDER.update({
+        "request_date": _to_iso_date(request_date),
+        "stated_deadline": None,  # deadline parsed from the request text by code, if any
+        "deadline_date": None,
+        "registered": False,
+        "items": {},          # exact catalog name -> {quantity, descriptions, status, ...}
+        "unsupported": [],    # requested products we do not sell
+        "quote_id": None,
+        "fulfillment": None,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -667,6 +699,17 @@ def _to_iso_date(value: Union[str, datetime]) -> str:
         return value.strftime("%Y-%m-%d")
     date_part = str(value).strip().split("T")[0].split(" ")[0]
     return datetime.fromisoformat(date_part).strftime("%Y-%m-%d")
+
+
+def _order_date() -> str:
+    """Request date of the order being processed."""
+    if not CURRENT_ORDER.get("request_date"):
+        raise RuntimeError("No customer order is being processed.")
+    return CURRENT_ORDER["request_date"]
+
+
+def _order_not_registered_error() -> Dict:
+    return {"error": "No order registered yet. The orchestrator must call match_catalog_items first."}
 
 
 def _stock_on(item_name: str, as_of_date: str) -> int:
@@ -693,7 +736,6 @@ def _unknown_item_error(item_name: str) -> Dict:
 def _log(message: str) -> None:
     """One-line trace of tool activity so each test run can be followed in the console."""
     print(f"    [tool] {message}")
-
 
 # Keyword rules mapping free-text customer descriptions to catalog items. Checked in order:
 # specific products first, then paper types, then generic colour/size words, so that e.g.
@@ -778,39 +820,90 @@ def _match_description(description: str) -> Dict:
 # ---------------------------------------------------------------------------
 
 @tool
-def match_catalog_items(item_descriptions: list[str]) -> list[dict]:
-    """Map the customer's own item descriptions to exact catalog item names.
+def match_catalog_items(requested_items: list[dict], deadline_date: str) -> dict:
+    """Register the customer's order: map each requested item to an exact catalog item name and
+    record quantities and the delivery deadline. Call this first, once per request. All other
+    agents work on the order registered here.
 
-    Always call this before delegating: the database only accepts exact catalog names.
-    Items with match = null are products we do not sell (e.g. balloons, tickets, A3 paper).
+    Items with match = null are products we do not sell (e.g. balloons, tickets, plain A3 paper).
 
     Args:
-        item_descriptions: Item descriptions as written by the customer, without quantities,
-            e.g. ["A4 glossy paper", "heavy cardstock (white)", "balloons"].
+        requested_items: One entry per requested item, with the description exactly as the
+            customer wrote it and the quantity in single units (1 ream = 500 sheets), e.g.
+            [{"description": "A4 glossy paper", "quantity": 200}, {"description": "balloons", "quantity": 50}].
+        deadline_date: Date the customer needs delivery by, YYYY-MM-DD (request date + 14 days if
+            the customer gave none). A date written in the request text takes precedence.
     """
-    results = [_match_description(description) for description in item_descriptions]
-    _log(f"match_catalog_items -> {[(r['description'], r['match']) for r in results]}")
-    return results
+    request_date = _order_date()
+    if any(item["status"] != "pending" for item in CURRENT_ORDER["items"].values()):
+        return {"error": "The order is already being processed; it cannot be registered again.",
+                "order": _order_summary()}
+
+    try:  # a deadline parsed from the request text by code wins over the LLM's reading
+        deadline = CURRENT_ORDER.get("stated_deadline") or _to_iso_date(deadline_date)
+    except ValueError:
+        deadline = None
+    if deadline is None or deadline < request_date:  # unusable deadline -> standard window
+        deadline = (datetime.fromisoformat(request_date)
+                    + timedelta(days=DEFAULT_DELIVERY_WINDOW_DAYS)).strftime("%Y-%m-%d")
+
+    items, unsupported = {}, []
+    for entry in requested_items:
+        description = str(entry.get("description", "")).strip()
+        try:
+            quantity = int(float(entry.get("quantity", 0)))
+        except (TypeError, ValueError):
+            quantity = 0
+        if not description or quantity <= 0:
+            return {"error": f"Every item needs a description and a positive quantity: {entry}"}
+        match = _match_description(description)
+        if match["match"] is None:
+            reason = match.get("reason", "not part of our product catalog")
+            unsupported.append({"description": description, "quantity": quantity, "customer_reason": reason})
+            continue
+        line = items.setdefault(match["match"], {"quantity": 0, "descriptions": [], "status": "pending"})
+        line["quantity"] += quantity
+        line["descriptions"].append(description)
+
+    CURRENT_ORDER.update({"deadline_date": deadline, "registered": True, "items": items, "unsupported": unsupported})
+    _log(f"match_catalog_items -> deadline {deadline}, "
+         f"{[(name, line['quantity']) for name, line in items.items()]}, unsupported {[u['description'] for u in unsupported]}")
+    return _order_summary()
+
+
+def _order_summary() -> Dict:
+    """Customer-safe view of the current order, shared with the agents."""
+    return {
+        "request_date": CURRENT_ORDER["request_date"],
+        "deadline_date": CURRENT_ORDER["deadline_date"],
+        "order_items": [
+            {"item_name": name, "quantity": line["quantity"], "status": line["status"],
+             **({"available_on": line["available_on"]} if "available_on" in line else {}),
+             **({"customer_reason": line["customer_reason"]} if "customer_reason" in line else {})}
+            for name, line in CURRENT_ORDER["items"].items()
+        ],
+        "unsupported_items": CURRENT_ORDER["unsupported"],
+        "quote_id": CURRENT_ORDER["quote_id"],
+    }
 
 
 # ---------------------------------------------------------------------------
-# Tools for the inventory agent
+# Tools for the inventory agent (dates come from the registered order, never from the LLM)
 # ---------------------------------------------------------------------------
 
 @tool
-def get_stock_level_tool(item_name: str, as_of_date: str) -> dict:
-    """Get the current stock of one catalog item as of a date (wraps get_stock_level).
+def get_stock_level_tool(item_name: str) -> dict:
+    """Get the current stock of one catalog item as of the request date (wraps get_stock_level).
 
     Args:
         item_name: Exact catalog item name, e.g. "Glossy paper".
-        as_of_date: Date in YYYY-MM-DD format (use the customer's request date).
     """
     if item_name not in CATALOG:
         return _unknown_item_error(item_name)
-    as_of_date = _to_iso_date(as_of_date)
+    as_of_date = _order_date()
     stock = _stock_on(item_name, as_of_date)
     min_level = _min_stock_levels().get(item_name)
-    _log(f"get_stock_level_tool({item_name}, {as_of_date}) -> {stock}")
+    _log(f"get_stock_level_tool({item_name}) -> {stock}")
     return {
         "item_name": item_name,
         "as_of_date": as_of_date,
@@ -821,121 +914,114 @@ def get_stock_level_tool(item_name: str, as_of_date: str) -> dict:
 
 
 @tool
-def get_all_inventory_tool(as_of_date: str) -> dict:
-    """List every item currently in stock and flag items below their minimum stock level
-    (wraps get_all_inventory). Use it for general inventory questions and restock reviews.
-
-    Args:
-        as_of_date: Date in YYYY-MM-DD format.
-    """
-    as_of_date = _to_iso_date(as_of_date)
+def get_all_inventory_tool() -> dict:
+    """List every item in stock as of the request date and flag items below their minimum
+    stock level (wraps get_all_inventory). Use it for general inventory questions."""
+    as_of_date = _order_date()
     in_stock = {name: int(units) for name, units in get_all_inventory(as_of_date).items()}
-    min_levels = _min_stock_levels()
     low_stock = [
         {"item_name": name, "current_stock": in_stock.get(name, 0), "min_stock_level": level}
-        for name, level in min_levels.items()
+        for name, level in _min_stock_levels().items()
         if in_stock.get(name, 0) < level
     ]
-    _log(f"get_all_inventory_tool({as_of_date}) -> {len(in_stock)} items, {len(low_stock)} low")
+    _log(f"get_all_inventory_tool() -> {len(in_stock)} items, {len(low_stock)} low")
     return {"as_of_date": as_of_date, "items_in_stock": in_stock, "items_below_min_stock": low_stock}
 
 
 @tool
-def get_supplier_delivery_date_tool(order_date: str, quantity: int) -> dict:
-    """Estimate when the supplier would deliver an order of a given size
-    (wraps get_supplier_delivery_date). Lead time grows with quantity.
+def get_supplier_delivery_date_tool(quantity: int) -> dict:
+    """Estimate when the supplier would deliver an order of a given size placed on the request
+    date (wraps get_supplier_delivery_date). Lead time grows with quantity.
 
     Args:
-        order_date: Date the supplier order is placed, YYYY-MM-DD.
-        quantity: Number of units to order from the supplier.
+        quantity: Number of units that would be ordered from the supplier.
     """
-    order_date = _to_iso_date(order_date)
+    order_date = _order_date()
     delivery_date = get_supplier_delivery_date(order_date, int(quantity))
     return {"order_date": order_date, "quantity": int(quantity), "supplier_delivery_date": delivery_date}
 
 
 @tool
-def get_cash_balance_tool(as_of_date: str) -> dict:
-    """Get the company's cash balance as of a date (wraps get_cash_balance). Internal only:
-    never share this figure with customers.
-
-    Args:
-        as_of_date: Date in YYYY-MM-DD format.
-    """
-    as_of_date = _to_iso_date(as_of_date)
+def get_cash_balance_tool() -> dict:
+    """Get the company's cash balance as of the request date (wraps get_cash_balance).
+    Internal only: never share this figure with customers."""
+    as_of_date = _order_date()
     return {"as_of_date": as_of_date, "cash_balance": round(get_cash_balance(as_of_date), 2)}
 
 
 @tool
-def restock_item(item_name: str, order_quantity: int, request_date: str, deadline_date: str) -> dict:
-    """Check whether a customer order for one item can be served and reorder stock from the
-    supplier when needed. Call this once per item of the customer order.
+def restock_item(item_name: str) -> dict:
+    """Check availability of one item of the registered order and reorder stock from the
+    supplier when needed. Call it once for every item of the order.
 
     The decision is deterministic:
     - enough stock and staying at/above the minimum stock level -> no purchase, available now;
-    - otherwise it buys enough to cover the order AND restore the minimum stock level, as long as
-      the company can afford it and (if the order depends on the delivery) the supplier delivers
-      by the customer's deadline; if that larger order is too slow or too expensive it retries
-      with just the shortfall;
-    - if neither works the item is reported as unavailable with the reason.
+    - otherwise it buys enough to cover the order AND restore the minimum stock level, if the
+      company can afford it and (when the order depends on the delivery) the supplier delivers
+      by the customer's deadline; if that is too slow or too expensive it retries with just the
+      shortfall;
+    - if neither works the item is unavailable, with a customer-safe reason.
     Purchases are recorded as 'stock_orders' transactions on the request date at the supplier's
     wholesale cost (70% of the catalog list price).
 
     Args:
-        item_name: Exact catalog item name.
-        order_quantity: Units the customer wants.
-        request_date: Customer request date, YYYY-MM-DD.
-        deadline_date: Date the customer needs delivery by, YYYY-MM-DD.
+        item_name: Exact catalog item name of an item in the registered order.
     """
-    if item_name not in CATALOG:
-        return _unknown_item_error(item_name)
-    order_quantity = int(order_quantity)
-    if order_quantity <= 0:
-        return {"error": "order_quantity must be a positive integer."}
-    request_date, deadline_date = _to_iso_date(request_date), _to_iso_date(deadline_date)
+    if not CURRENT_ORDER.get("registered"):
+        return _order_not_registered_error()
+    line = CURRENT_ORDER["items"].get(item_name)
+    if line is None:
+        return {"error": f"'{item_name}' is not part of the registered order.",
+                "order_items": list(CURRENT_ORDER["items"])}
+    if line["status"] != "pending":  # already decided; never buy twice
+        return {"item_name": item_name, **{k: v for k, v in line.items() if k != "descriptions"}}
 
+    request_date, deadline_date = CURRENT_ORDER["request_date"], CURRENT_ORDER["deadline_date"]
+    order_quantity = line["quantity"]
     stock = _stock_on(item_name, request_date)
     min_level = _min_stock_levels().get(item_name, 0)
     shortfall = max(0, order_quantity - stock)
     top_up = max(0, order_quantity + min_level - stock)  # restores min_level after the sale
 
+    def decide(status: str, **details) -> Dict:
+        line.update(status=status, **details)
+        return {"item_name": item_name, "quantity": order_quantity, "status": status, **details}
+
     if top_up == 0:
         _log(f"restock_item({item_name}, {order_quantity}) -> in stock ({stock}), no reorder")
-        return {"item_name": item_name, "status": "available", "restocked": False,
-                "available_to_customer_on": request_date}
+        return decide("available", restocked=False, available_on=request_date)
 
     unit_cost = CATALOG[item_name]["unit_price"] * SUPPLIER_COST_RATE
     cash = get_cash_balance(request_date)
     attempts = [top_up] + ([shortfall] if 0 < shortfall < top_up else [])
-    rejection = ""
+    earliest_delivery, cash_limited = None, False
     for reorder_qty in attempts:
         supplier_date = get_supplier_delivery_date(request_date, reorder_qty)
         cost = round(reorder_qty * unit_cost, 2)
         if shortfall > 0 and supplier_date > deadline_date:
-            rejection = (f"supplier cannot deliver {reorder_qty} units before {deadline_date} "
-                         f"(earliest {supplier_date})")
+            earliest_delivery = min(filter(None, [earliest_delivery, supplier_date]))
             continue
         if cost > cash:
-            rejection = "restocking cost exceeds available cash"
+            cash_limited = True
             continue
         create_transaction(item_name, "stock_orders", reorder_qty, cost, request_date)
         available_on = supplier_date if shortfall > 0 else request_date
-        if shortfall > 0:
-            key = (item_name, request_date)
-            CUSTOMER_AVAILABILITY_DATES[key] = max(available_on, CUSTOMER_AVAILABILITY_DATES.get(key, ""))
         _log(f"restock_item({item_name}, {order_quantity}) -> bought {reorder_qty} for ${cost:.2f}, "
              f"supplier delivers {supplier_date}")
-        return {"item_name": item_name, "status": "available", "restocked": True,
-                "reorder_quantity": reorder_qty, "supplier_delivery_date": supplier_date,
-                "available_to_customer_on": available_on}
+        return decide("available", restocked=True, reorder_quantity=reorder_qty,
+                      supplier_delivery_date=supplier_date, available_on=available_on)
 
     if shortfall == 0:
         # The order itself is covered by stock; only the top-up to min_level could not be placed.
-        _log(f"restock_item({item_name}, {order_quantity}) -> in stock, top-up skipped: {rejection}")
-        return {"item_name": item_name, "status": "available", "restocked": False,
-                "available_to_customer_on": request_date, "note": f"replenishment skipped: {rejection}"}
-    _log(f"restock_item({item_name}, {order_quantity}) -> UNAVAILABLE: {rejection}")
-    return {"item_name": item_name, "status": "unavailable", "restocked": False, "reason": rejection}
+        _log(f"restock_item({item_name}, {order_quantity}) -> in stock, top-up postponed")
+        return decide("available", restocked=False, available_on=request_date)
+    if earliest_delivery and not cash_limited:
+        reason = f"cannot be delivered by {deadline_date} (earliest possible delivery {earliest_delivery})"
+    else:
+        reason = "not available in the requested quantity at the moment"  # never reveal finances
+    _log(f"restock_item({item_name}, {order_quantity}) -> UNAVAILABLE: {reason}"
+         f"{' (cash-limited)' if cash_limited else ''}")
+    return decide("unavailable", customer_reason=reason)
 
 
 # ---------------------------------------------------------------------------
@@ -969,32 +1055,27 @@ def search_quote_history_tool(search_terms: list[str], limit: int = 5) -> list[d
 
 
 @tool
-def calculate_quote(items: list[dict], request_date: str, deadline_date: str) -> dict:
-    """Price a set of items with catalog unit prices and the bulk-discount tier, and register
-    the quote. Returns a quote_id that the sales agent needs to finalise the order.
+def calculate_quote() -> dict:
+    """Price every item of the registered order that the inventory check marked as available,
+    using catalog list prices and the bulk-discount tier, and register the quote. Returns the
+    quote_id that the sales agent needs. Calling it again returns the same quote.
 
     Bulk discount by total units: 500+ units 5%, 2,000+ units 10%, 10,000+ units 15%.
-    Totals are rounded to whole dollars (friendly pricing, as in past quotes).
+    Totals are rounded to whole dollars (friendly pricing, as in past quotes)."""
+    if not CURRENT_ORDER.get("registered"):
+        return _order_not_registered_error()
+    if CURRENT_ORDER["quote_id"]:
+        return _quote_view(QUOTES[CURRENT_ORDER["quote_id"]])
+    pending = [name for name, line in CURRENT_ORDER["items"].items() if line["status"] == "pending"]
+    if pending:
+        return {"error": "The inventory agent has not checked these items yet.", "pending_items": pending}
 
-    Args:
-        items: List of {"item_name": exact catalog name, "quantity": units} for the items to quote.
-        request_date: Customer request date, YYYY-MM-DD.
-        deadline_date: Date the customer needs delivery by, YYYY-MM-DD.
-    """
-    request_date, deadline_date = _to_iso_date(request_date), _to_iso_date(deadline_date)
-    lines, errors = [], []
-    for entry in items:
-        name, quantity = entry.get("item_name"), int(entry.get("quantity", 0))
-        if name not in CATALOG:
-            errors.append(_unknown_item_error(str(name)))
-        elif quantity <= 0:
-            errors.append({"error": f"quantity for '{name}' must be positive"})
-        else:
-            unit_price = CATALOG[name]["unit_price"]
-            lines.append({"item_name": name, "quantity": quantity, "unit_price": unit_price,
-                          "list_price": round(quantity * unit_price, 2)})
+    lines = [{"item_name": name, "quantity": line["quantity"], "unit_price": CATALOG[name]["unit_price"],
+              "list_price": round(line["quantity"] * CATALOG[name]["unit_price"], 2),
+              "delivery_date": line["available_on"]}
+             for name, line in CURRENT_ORDER["items"].items() if line["status"] == "available"]
     if not lines:
-        return {"error": "no valid items to quote", "details": errors}
+        return {"error": "No item of this order is available, so there is nothing to quote."}
 
     total_units = sum(line["quantity"] for line in lines)
     discount_rate = next(rate for min_units, rate in BULK_DISCOUNT_TIERS if total_units >= min_units)
@@ -1008,15 +1089,21 @@ def calculate_quote(items: list[dict], request_date: str, deadline_date: str) ->
         line["line_total"] = round(line["list_price"] * factor, 2)
     lines[-1]["line_total"] = round(total - sum(line["line_total"] for line in lines[:-1]), 2)
 
+    request_date = CURRENT_ORDER["request_date"]
     quote_id = f"Q-{request_date.replace('-', '')}-{len(QUOTES) + 1:03d}"
-    QUOTES[quote_id] = {"quote_id": quote_id, "request_date": request_date, "deadline_date": deadline_date,
-                        "lines": lines, "discount_rate": discount_rate, "list_total": round(list_total, 2),
-                        "total": total, "status": "open"}
+    QUOTES[quote_id] = {"quote_id": quote_id, "request_date": request_date,
+                        "deadline_date": CURRENT_ORDER["deadline_date"], "lines": lines,
+                        "total_units": total_units, "discount_rate": discount_rate,
+                        "list_total": round(list_total, 2), "total": total, "status": "open"}
+    CURRENT_ORDER["quote_id"] = quote_id
     _log(f"calculate_quote -> {quote_id}: {total_units} units, list ${list_total:.2f}, "
          f"{discount_rate:.0%} off, total ${total:.2f}")
-    return {"quote_id": quote_id, "lines": lines, "total_units": total_units,
-            "discount_rate": discount_rate, "list_total": round(list_total, 2), "total": total,
-            "invalid_items": errors}
+    return _quote_view(QUOTES[quote_id])
+
+
+def _quote_view(quote: Dict) -> Dict:
+    return {key: quote[key] for key in
+            ("quote_id", "lines", "total_units", "discount_rate", "list_total", "total")}
 
 
 # ---------------------------------------------------------------------------
@@ -1024,20 +1111,16 @@ def calculate_quote(items: list[dict], request_date: str, deadline_date: str) ->
 # ---------------------------------------------------------------------------
 
 @tool
-def generate_financial_report_tool(as_of_date: str) -> dict:
-    """Company financial health check (wraps generate_financial_report): cash, inventory value,
-    total assets, top sellers and items below minimum stock. Internal only: never share with
-    customers. Use it before finalising large orders.
-
-    Args:
-        as_of_date: Date in YYYY-MM-DD format.
-    """
-    as_of_date = _to_iso_date(as_of_date)
+def generate_financial_report_tool() -> dict:
+    """Company financial health check as of the request date (wraps generate_financial_report):
+    cash, inventory value, total assets, top sellers and items below minimum stock. Internal
+    only: never share with customers. Use it before finalising large orders."""
+    as_of_date = _order_date()
     report = generate_financial_report(as_of_date)
     min_levels = _min_stock_levels()
     low_stock = [row["item_name"] for row in report["inventory_summary"]
                  if row["stock"] < min_levels.get(row["item_name"], 0)]
-    _log(f"generate_financial_report_tool({as_of_date}) -> cash ${report['cash_balance']:.2f}")
+    _log(f"generate_financial_report_tool() -> cash ${float(report['cash_balance']):.2f}")
     return {
         "as_of_date": as_of_date,
         "cash_balance": round(float(report["cash_balance"]), 2),
@@ -1051,16 +1134,17 @@ def generate_financial_report_tool(as_of_date: str) -> dict:
 
 @tool
 def fulfill_order(quote_id: str) -> dict:
-    """Finalise an order from a quote: re-check stock and the delivery deadline for every quoted
-    line and record each deliverable line as a 'sales' transaction at the quoted price.
-    Calling it again for the same quote returns the original result (no double booking).
+    """Finalise the current order from its quote: re-check stock and the delivery deadline for
+    every quoted line and record each deliverable line as a 'sales' transaction at the quoted
+    price. Calling it again for the same quote returns the original result (no double booking).
 
     Args:
         quote_id: The quote_id returned by calculate_quote, e.g. "Q-20250401-001".
     """
-    quote = QUOTES.get(quote_id)
-    if quote is None:
-        return {"error": f"unknown quote_id '{quote_id}'"}
+    if quote_id != CURRENT_ORDER.get("quote_id"):
+        return {"error": f"'{quote_id}' is not the quote of the current order.",
+                "current_quote_id": CURRENT_ORDER.get("quote_id")}
+    quote = QUOTES[quote_id]
     if quote["status"] == "closed":
         return quote["fulfillment"]
 
@@ -1068,16 +1152,15 @@ def fulfill_order(quote_id: str) -> dict:
     booked, rejected = [], []
     for line in quote["lines"]:
         name, quantity = line["item_name"], line["quantity"]
-        available_on = CUSTOMER_AVAILABILITY_DATES.get((name, request_date), request_date)
-        if available_on > deadline_date:
-            rejected.append({"item_name": name, "reason": f"cannot be delivered by {deadline_date}"})
+        if line["delivery_date"] > deadline_date:
+            rejected.append({"item_name": name, "customer_reason": f"cannot be delivered by {deadline_date}"})
             continue
         if _stock_on(name, request_date) < quantity:
-            rejected.append({"item_name": name, "reason": "insufficient stock"})
+            rejected.append({"item_name": name, "customer_reason": "not available in the requested quantity"})
             continue
-        transaction_id = create_transaction(name, "sales", quantity, line["line_total"], request_date)
+        create_transaction(name, "sales", quantity, line["line_total"], request_date)
         booked.append({"item_name": name, "quantity": quantity, "amount": line["line_total"],
-                       "delivery_date": available_on, "transaction_id": transaction_id})
+                       "delivery_date": line["delivery_date"]})
 
     status = "fulfilled" if not rejected else ("partially_fulfilled" if booked else "not_fulfilled")
     result = {
@@ -1085,12 +1168,70 @@ def fulfill_order(quote_id: str) -> dict:
         "status": status,
         "booked_lines": booked,
         "rejected_lines": rejected,
+        "discount_rate": quote["discount_rate"],
         "total_charged": round(sum(line["amount"] for line in booked), 2),
         "delivery_date": max((line["delivery_date"] for line in booked), default=None),
     }
     quote["status"], quote["fulfillment"] = "closed", result
+    CURRENT_ORDER["fulfillment"] = result
     _log(f"fulfill_order({quote_id}) -> {status}, charged ${result['total_charged']:.2f}")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Guard rail: the orchestrator may only answer the customer once the workflow is complete
+# ---------------------------------------------------------------------------
+
+def check_inventory_complete(final_answer, memory, agent=None) -> bool:
+    """Inventory agent may only finish once restock_item has decided every item of the order."""
+    pending = [name for name, line in CURRENT_ORDER.get("items", {}).items() if line["status"] == "pending"]
+    if pending:
+        raise ValueError(f"You have not called restock_item for {pending}. Call it for each of them.")
+    return True
+
+
+def check_quote_complete(final_answer, memory, agent=None) -> bool:
+    """Quoting agent may only finish once a quote exists (when anything is available to quote)."""
+    available = any(line["status"] == "available" for line in CURRENT_ORDER.get("items", {}).values())
+    if available and not CURRENT_ORDER.get("quote_id"):
+        raise ValueError("No quote has been created yet. Call calculate_quote().")
+    return True
+
+
+def check_sale_complete(final_answer, memory, agent=None) -> bool:
+    """Sales agent may only finish once the current quote has been fulfilled."""
+    if CURRENT_ORDER.get("quote_id") and not CURRENT_ORDER.get("fulfillment"):
+        raise ValueError(f"Call fulfill_order('{CURRENT_ORDER['quote_id']}') before answering.")
+    return True
+
+
+# Internal business data that must never appear in a customer reply
+INTERNAL_TERMS_PATTERN = re.compile(
+    r"\bcash\b|\b(stock|inventory) levels?\b|\bmargins?\b|\bwholesale\b|\bprofit", re.IGNORECASE)
+
+
+def check_order_workflow_complete(final_answer, memory, agent=None) -> bool:
+    """smolagents final_answer_check for the orchestrator. Raising sends the message back to the
+    orchestrator as an error, so it continues with the missing step instead of answering."""
+    if not CURRENT_ORDER.get("registered"):
+        raise ValueError("You have not registered the order. Call match_catalog_items first.")
+    pending = [name for name, line in CURRENT_ORDER["items"].items() if line["status"] == "pending"]
+    if pending:
+        raise ValueError(f"Inventory has not been checked for {pending}. Call inventory_agent.")
+    available = any(line["status"] == "available" for line in CURRENT_ORDER["items"].values())
+    if available and not CURRENT_ORDER["quote_id"]:
+        raise ValueError("Some items are available but no quote exists. Call quoting_agent.")
+    if CURRENT_ORDER["quote_id"] and not CURRENT_ORDER["fulfillment"]:
+        raise ValueError(f"Quote {CURRENT_ORDER['quote_id']} was not finalised. Call sales_agent with it.")
+    answer = str(final_answer)
+    fulfillment = CURRENT_ORDER["fulfillment"]
+    if fulfillment and fulfillment["booked_lines"] and CURRENT_ORDER["quote_id"] not in answer:
+        raise ValueError(f"Your reply must include the order reference {CURRENT_ORDER['quote_id']}.")
+    leak = INTERNAL_TERMS_PATTERN.search(answer)
+    if leak:
+        raise ValueError(f"Your reply mentions internal information ('{leak.group(0)}'). "
+                         "Remove that wording and answer again.")
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1098,61 +1239,59 @@ def fulfill_order(quote_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 INVENTORY_INSTRUCTIONS = """You are the Inventory Agent of the Beaver's Choice Paper Company.
-You receive a request date, the customer's delivery deadline and a list of exact catalog item
-names with quantities.
-For EACH item call restock_item(item_name, order_quantity, request_date, deadline_date) exactly once.
-It checks current stock, decides whether to reorder from the supplier (shortfall or dropping
-below the minimum stock level), checks cash and supplier lead time against the deadline and
-records any purchase. Never do these calculations yourself and never call it twice for an item.
+You receive the items of a registered customer order (exact catalog names). The request date,
+quantities and deadline are already stored with the order.
+For EACH item of the order call restock_item(item_name) exactly once, even if you believe the
+item is in stock: only restock_item confirms an item for the order. It checks stock, decides
+whether to reorder from the supplier, checks cost and lead time against the deadline and records
+any purchase. Never do these calculations yourself and never invent item names.
 Use get_stock_level_tool, get_all_inventory_tool, get_supplier_delivery_date_tool and
 get_cash_balance_tool only for questions about stock, lead times or cash.
 Your final answer must list one line per item, using only facts returned by the tools:
-  <item_name> | <quantity> | AVAILABLE on <YYYY-MM-DD>
-  <item_name> | <quantity> | UNAVAILABLE: <reason>"""
+  <item_name> | <quantity> | AVAILABLE on <available_on>
+  <item_name> | <quantity> | UNAVAILABLE: <customer_reason>"""
 
 QUOTING_INSTRUCTIONS = """You are the Quoting Agent of the Beaver's Choice Paper Company.
-You receive a request date, a delivery deadline, customer context (job, event, order size) and
-the items to quote with exact catalog names and quantities.
+You receive the customer context (job, event, order size) for a registered order whose items
+have been checked by the inventory agent.
 1. Call search_quote_history_tool once with 1-3 short keywords (e.g. the event type and the main
    product) to see how similar past orders were priced and explained.
-2. Call calculate_quote exactly once with all items. It applies catalog prices and the bulk
-   discount deterministically. Never change, recompute or round its numbers.
+2. Call calculate_quote() once. It prices the available items of the order with catalog prices
+   and the bulk discount. Never change, recompute or round its numbers.
 Your final answer must contain: the quote_id, each line (item, quantity, unit price, line total),
 the discount rate, the total, and one or two customer-friendly sentences explaining the bulk
 discount (you may mention that it is in line with similar past orders)."""
 
 SALES_INSTRUCTIONS = """You are the Sales Agent of the Beaver's Choice Paper Company.
-You receive a quote_id, the quote total and the request date.
-1. If the quote total is $1,000 or more, first call generate_financial_report_tool(request_date)
-   as an internal health check. Its figures are confidential.
+You receive a quote_id and the quote total.
+1. If the quote total is $1,000 or more, first call generate_financial_report_tool() as an
+   internal health check. Its figures are confidential.
 2. Call fulfill_order(quote_id) exactly once. It re-checks stock and deadlines and records the sale.
 Your final answer must contain the order status, each booked line (item, quantity, amount,
-delivery date), each rejected line with its reason, the total charged and the delivery date."""
+delivery date), each rejected line with its customer_reason, the total charged and the delivery
+date."""
 
 ORCHESTRATOR_INSTRUCTIONS = f"""You are the customer-facing Orchestrator of the Beaver's Choice Paper Company.
 You coordinate three specialist agents: inventory_agent, quoting_agent and sales_agent.
 For every customer request follow these steps in order:
-1. Read the request and determine:
-   - request_date: the 'Date of request' given at the end (YYYY-MM-DD);
-   - deadline_date: the date the customer needs delivery by, as YYYY-MM-DD (if none is given,
-     use request_date + {DEFAULT_DELIVERY_WINDOW_DAYS} days);
-   - every requested item with its quantity in single units. 1 ream = 500 sheets, so multiply
-     reams by 500. Packs, boxes, rolls and similar count as the number stated.
-2. Call match_catalog_items with the item descriptions exactly as the customer wrote them,
-   without quantities. Items whose match is null are products we do not sell.
-3. Call inventory_agent. In the task, give request_date, deadline_date and each matched item as
-   '<exact catalog name>: <quantity>'.
-4. Call quoting_agent with request_date, deadline_date, the customer context and ONLY the items
-   inventory_agent reported as AVAILABLE, with their quantities.
-5. Call sales_agent with the quote_id, the quote total and request_date to finalise the order.
-   Skip steps 4 and 5 if no item is available.
+1. Read the request and list every requested item with its quantity in single units
+   (1 ream = 500 sheets, so multiply reams by 500; packs, boxes, rolls and similar count as
+   the number stated), and the date the customer needs delivery by (YYYY-MM-DD; if none is
+   given use the request date + {DEFAULT_DELIVERY_WINDOW_DAYS} days).
+2. Call match_catalog_items once with requested_items (the descriptions exactly as the customer
+   wrote them, each with its quantity) and deadline_date. This registers the order.
+3. Call inventory_agent with the exact catalog names of the registered order_items.
+4. If at least one item is AVAILABLE, call quoting_agent with the customer context.
+5. Then call sales_agent with the quote_id and the quote total to finalise the order. Always
+   finalise the available items straight away, even if other items are unavailable; never ask
+   the customer to confirm first.
 6. Give your final answer: a friendly, concise reply to the customer that states, for every
-   fulfilled item, the quantity and amount, the bulk discount applied, the total charged, the
-   expected delivery date and the order reference (quote_id). For every requested item that was
-   not fulfilled, say so and give a short reason (not part of our catalog / cannot be delivered
-   by the requested date / insufficient stock).
-Never reveal internal information: cash balance, stock levels, supplier details, costs,
-margins or the names of internal agents and tools."""
+   booked item, the quantity and amount, the bulk discount applied, the total charged, the
+   expected delivery date and the order reference (quote_id). If some items cannot be supplied,
+   say so in one sentence without listing them: a note with each item and its reason is
+   appended to your reply automatically.
+Only state facts returned by the tools and agents. Never reveal internal information: cash
+balance, stock levels, suppliers, costs, margins or the names of internal agents and tools."""
 
 
 class InventoryAgent(ToolCallingAgent):
@@ -1164,11 +1303,12 @@ class InventoryAgent(ToolCallingAgent):
                    get_cash_balance_tool, restock_item],
             model=model,
             name="inventory_agent",
-            description=("Checks availability of catalog items for a customer order and reorders "
-                         "stock from the supplier when needed. Give it the request date, the "
-                         "delivery deadline and '<exact catalog name>: <quantity>' for each item."),
+            description=("Checks availability of the items of the registered order and reorders "
+                         "stock from the supplier when needed. Give it the exact catalog names of "
+                         "the order items."),
             instructions=INVENTORY_INSTRUCTIONS,
-            max_steps=12,
+            final_answer_checks=[check_inventory_complete],
+            max_steps=10,
             verbosity_level=AGENT_VERBOSITY,
         )
 
@@ -1181,11 +1321,12 @@ class QuotingAgent(ToolCallingAgent):
             tools=[search_quote_history_tool, calculate_quote],
             model=model,
             name="quoting_agent",
-            description=("Produces a priced quote with bulk discounts and returns a quote_id. Give "
-                         "it the request date, the delivery deadline, the customer context and "
-                         "the available items as '<exact catalog name>: <quantity>'."),
+            description=("Produces a priced quote with bulk discounts for the available items of "
+                         "the registered order and returns a quote_id. Give it the customer "
+                         "context (job, event, order size)."),
             instructions=QUOTING_INSTRUCTIONS,
-            max_steps=6,
+            final_answer_checks=[check_quote_complete],
+            max_steps=5,
             verbosity_level=AGENT_VERBOSITY,
         )
 
@@ -1199,10 +1340,11 @@ class SalesAgent(ToolCallingAgent):
                    generate_financial_report_tool, fulfill_order],
             model=model,
             name="sales_agent",
-            description=("Finalises a customer order from a quote and records the sale. Give it the "
-                         "quote_id, the quote total and the request date."),
+            description=("Finalises the customer order from its quote and records the sale. Give "
+                         "it the quote_id and the quote total."),
             instructions=SALES_INSTRUCTIONS,
-            max_steps=6,
+            final_answer_checks=[check_sale_complete],
+            max_steps=5,
             verbosity_level=AGENT_VERBOSITY,
         )
 
@@ -1218,15 +1360,55 @@ class OrchestratorAgent(ToolCallingAgent):
             name="orchestrator",
             description="Handles customer inquiries for the Beaver's Choice Paper Company.",
             instructions=ORCHESTRATOR_INSTRUCTIONS,
+            final_answer_checks=[check_order_workflow_complete],
             max_steps=12,
             verbosity_level=AGENT_VERBOSITY,
         )
 
 
+REQUEST_DATE_PATTERN = re.compile(r"Date of request:\s*(\d{4}-\d{2}-\d{2})")
+_MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December"
+DEADLINE_PATTERN = re.compile(
+    rf"\b(?:by|before|no later than|until)\s+(?:the\s+)?({_MONTHS})\s+(\d{{1,2}})(?:st|nd|rd|th)?,?\s+(\d{{4}})",
+    re.IGNORECASE)
+
+
+def _parse_stated_deadline(request_text: str) -> Union[str, None]:
+    """Delivery deadline written in the request ("... delivered by April 15, 2025"), if any."""
+    match = DEADLINE_PATTERN.search(request_text)
+    if not match:
+        return None
+    month, day, year = match.groups()
+    return datetime.strptime(f"{month.title()} {day} {year}", "%B %d %Y").strftime("%Y-%m-%d")
+
+
+def _unfulfilled_items_note() -> str:
+    """Customer-safe list of everything requested but not supplied, with the reason for each."""
+    notes = [f"- {entry['description']} ({entry['quantity']:,}): {entry['customer_reason']}"
+             for entry in CURRENT_ORDER.get("unsupported", [])]
+    fulfillment = CURRENT_ORDER.get("fulfillment") or {}
+    rejected_at_sale = {line["item_name"]: line["customer_reason"] for line in fulfillment.get("rejected_lines", [])}
+    for name, line in CURRENT_ORDER.get("items", {}).items():
+        reason = line.get("customer_reason") if line["status"] == "unavailable" else rejected_at_sale.get(name)
+        if line["status"] == "pending":
+            reason = "could not be confirmed at this time"
+        if reason:
+            notes.append(f"- {name} ({line['quantity']:,}): {reason}")
+    return ("\n\nItems we could not supply:\n" + "\n".join(notes)) if notes else ""
+
+
 def handle_customer_request(orchestrator: OrchestratorAgent, request_text: str) -> str:
-    """Run one customer request through the multi-agent system and return the customer reply."""
+    """Run one customer request through the multi-agent system and return the customer reply.
+
+    The request date (and the delivery deadline, when written as a date) is taken from the
+    request text by code, not by the LLM, and starts a new order that all agents share. Items
+    that could not be supplied are appended with their reasons, so the customer always gets one.
+    """
+    date_match = REQUEST_DATE_PATTERN.search(request_text)
+    start_order(date_match.group(1) if date_match else datetime.now().strftime("%Y-%m-%d"))
+    CURRENT_ORDER["stated_deadline"] = _parse_stated_deadline(request_text)
     try:
-        return str(orchestrator.run(request_text))
+        return str(orchestrator.run(request_text)) + _unfulfilled_items_note()
     except Exception as exc:  # keep the test run going; the failure is logged, not shown to the customer
         print(f"ERROR while handling request: {exc}")
         return ("We're sorry, we could not process your request right now. "
