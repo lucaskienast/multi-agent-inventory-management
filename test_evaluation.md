@@ -1,7 +1,7 @@
 # Step 5 – Test & Evaluation (`quote_requests_sample.csv`)
 
 Run: `python project_starter.py` with `gpt-4o-mini` (OpenAI endpoint), 20 requests, 2025-04-01 → 2025-04-17.
-Output: `test_results.csv`. The table below is from the final run (run 5).
+Output: `test_results.csv`. The table below is from the final run (run 8); its figures are identical to run 5.
 
 ## 1. Results per request
 
@@ -39,8 +39,8 @@ Output: `test_results.csv`. The table below is from the final run (run 5).
 | Handle varied inquiries | ✅ catalog mapping for 45 free-text item names, ream conversion, unsupported products and sizes, deadlines from 04-10 to 05-15 |
 | Inventory use & profitability | ✅ 40 sales lines, $12,493.00 revenue; 33 restock orders, $9,582.85 cost; cash $45,059.70 → **$47,969.85 (+$2,910.15)**; restocks also restore `min_stock_level` |
 | Competitive, consistent pricing | ✅ catalog list prices with 0 / 5 / 10 / 15% bulk tiers; totals rounded to whole dollars like the historical quotes; identical financial results in runs 2 and 5 (final cash $47,969.85) |
-| Cash / inventory visible in `test_results.csv` | ✅ cash changes after 18 of 20 requests |
-| No internal data in replies | ✅ no reply mentions cash, stock levels, margins, agents or tools; 19 of 19 replies with a sale include the order reference |
+| Cash / inventory visible in `test_results.csv` | ✅ cash changes after 19 of 20 requests |
+| No internal data in replies | ✅ no reply mentions cash, stock levels, margins, agents or tools; all 19 replies with a sale include the order reference and a pricing rationale |
 
 ## 3. How the system got here (iterations)
 
@@ -50,7 +50,10 @@ Output: `test_results.csv`. The table below is from the final run (run 5).
 | 2 | Replies did not always give the reason; the guard's broad "supplier" ban made the orchestrator loop until the step limit; LLM misread some deadlines | Narrower internal-data guard that names the offending word; deadline parsed by code; unsupplied items and reasons appended to each reply by code |
 | 3 | Inventory agent sometimes skipped `restock_item` for items it saw in stock | Per-agent completion checks (inventory / quoting / sales) |
 | 4 | Orchestrator combined a delegation and `final_answer` in one step (rejected by smolagents) → loop | One tool call per step (`parallel_tool_calls=False`); instruction to finalise available items without asking for confirmation |
-| 5 | – | 0 step-limit hits, 0 errors, 4 guard trips, each fixed on the next step |
+| 5 | Replies explained the discount inconsistently | Pricing rationale (list price, tier and why) appended by code |
+| 6 | Results contaminated by a second program writing to the same database file | Re-run in isolation; process check during runs |
+| 7 | LLM converted "500 reams" to 250,500 sheets ($17 overcharge) | Quantity and unit passed as written; ream conversion and a check against the request text in code |
+| 8 | – | 0 step-limit hits, 0 errors, 8 guard trips (each fixed on the next step); DB reconciled with the tool log (40 sales, 33 purchases) |
 
 ## 4. Known limitations
 
