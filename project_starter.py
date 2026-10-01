@@ -614,6 +614,7 @@ class SequentialToolCallModel(OpenAIServerModel):
     """
 
     def _prepare_completion_kwargs(self, *args, **kwargs):
+        """Add parallel_tool_calls=False to every request that offers tools."""
         completion_kwargs = super()._prepare_completion_kwargs(*args, **kwargs)
         if completion_kwargs.get("tools"):
             completion_kwargs["parallel_tool_calls"] = False
@@ -676,6 +677,7 @@ def start_order(request_date: str) -> None:
     CURRENT_ORDER.update({
         "request_date": _to_iso_date(request_date),
         "stated_deadline": None,  # deadline parsed from the request text by code, if any
+        "request_text": "",       # original request, used to verify the quantities the LLM reads
         "deadline_date": None,
         "registered": False,
         "items": {},          # exact catalog name -> {quantity, descriptions, status, ...}
@@ -709,6 +711,7 @@ def _order_date() -> str:
 
 
 def _order_not_registered_error() -> Dict:
+    """Error returned by tools that need a registered order when none exists yet."""
     return {"error": "No order registered yet. The orchestrator must call match_catalog_items first."}
 
 
@@ -828,9 +831,10 @@ def match_catalog_items(requested_items: list[dict], deadline_date: str) -> dict
     Items with match = null are products we do not sell (e.g. balloons, tickets, plain A3 paper).
 
     Args:
-        requested_items: One entry per requested item, with the description exactly as the
-            customer wrote it and the quantity in single units (1 ream = 500 sheets), e.g.
-            [{"description": "A4 glossy paper", "quantity": 200}, {"description": "balloons", "quantity": 50}].
+        requested_items: One entry per requested item: the description exactly as the customer
+            wrote it, the quantity exactly as written and its unit as written (conversion of
+            reams to sheets is done here), e.g. [{"description": "A4 glossy paper", "quantity": 200,
+            "unit": "sheets"}, {"description": "printer paper", "quantity": 500, "unit": "reams"}].
         deadline_date: Date the customer needs delivery by, YYYY-MM-DD (request date + 14 days if
             the customer gave none). A date written in the request text takes precedence.
     """
@@ -856,6 +860,10 @@ def match_catalog_items(requested_items: list[dict], deadline_date: str) -> dict
             quantity = 0
         if not description or quantity <= 0:
             return {"error": f"Every item needs a description and a positive quantity: {entry}"}
+        unit = str(entry.get("unit", "")).lower()
+        quantity = _verify_quantity(quantity, unit)
+        if isinstance(quantity, dict):
+            return {**quantity, "item": description}
         match = _match_description(description)
         if match["match"] is None:
             reason = match.get("reason", "not part of our product catalog")
@@ -869,6 +877,28 @@ def match_catalog_items(requested_items: list[dict], deadline_date: str) -> dict
     _log(f"match_catalog_items -> deadline {deadline}, "
          f"{[(name, line['quantity']) for name, line in items.items()]}, unsupported {[u['description'] for u in unsupported]}")
     return _order_summary()
+
+
+SHEETS_PER_REAM = 500
+
+
+def _verify_quantity(quantity: int, unit: str) -> Union[int, Dict]:
+    """Ground a quantity read by the LLM in the request text and convert reams in code.
+
+    Returns the quantity in single units, or an error dict when the number does not appear in the
+    request (directly, or as reams x 500), so the LLM re-reads instead of inventing a number.
+    """
+    text = CURRENT_ORDER.get("request_text", "")
+    if not text:  # no source text to check against (e.g. direct tool use)
+        return quantity * SHEETS_PER_REAM if "ream" in unit else quantity
+    numbers = {int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", text)}
+    ream_counts = {int(n.replace(",", "")) for n in re.findall(r"(\d[\d,]*)\s*reams?\b", text, re.IGNORECASE)}
+    if "ream" in unit and quantity in ream_counts:
+        return quantity * SHEETS_PER_REAM
+    if quantity in numbers or quantity in {count * SHEETS_PER_REAM for count in ream_counts}:
+        return quantity
+    return {"error": f"Quantity {quantity:,} does not appear in the customer's request. Pass the number "
+                     "exactly as written with its unit (e.g. quantity 500, unit 'reams')."}
 
 
 def _order_summary() -> Dict:
@@ -984,6 +1014,7 @@ def restock_item(item_name: str) -> dict:
     top_up = max(0, order_quantity + min_level - stock)  # restores min_level after the sale
 
     def decide(status: str, **details) -> Dict:
+        """Store the availability decision on the order line and return it to the agent."""
         line.update(status=status, **details)
         return {"item_name": item_name, "quantity": order_quantity, "status": status, **details}
 
@@ -1102,6 +1133,7 @@ def calculate_quote() -> dict:
 
 
 def _quote_view(quote: Dict) -> Dict:
+    """Subset of a stored quote that is shown to the agents."""
     return {key: quote[key] for key in
             ("quote_id", "lines", "total_units", "discount_rate", "list_total", "total")}
 
@@ -1274,12 +1306,12 @@ date."""
 ORCHESTRATOR_INSTRUCTIONS = f"""You are the customer-facing Orchestrator of the Beaver's Choice Paper Company.
 You coordinate three specialist agents: inventory_agent, quoting_agent and sales_agent.
 For every customer request follow these steps in order:
-1. Read the request and list every requested item with its quantity in single units
-   (1 ream = 500 sheets, so multiply reams by 500; packs, boxes, rolls and similar count as
-   the number stated), and the date the customer needs delivery by (YYYY-MM-DD; if none is
-   given use the request date + {DEFAULT_DELIVERY_WINDOW_DAYS} days).
-2. Call match_catalog_items once with requested_items (the descriptions exactly as the customer
-   wrote them, each with its quantity) and deadline_date. This registers the order.
+1. Read the request and list every requested item with its quantity and unit exactly as
+   written (e.g. 500 reams, 200 sheets, 300 rolls; do not convert units yourself), and the date
+   the customer needs delivery by (YYYY-MM-DD; if none is given use the request date +
+   {DEFAULT_DELIVERY_WINDOW_DAYS} days).
+2. Call match_catalog_items once with requested_items (description exactly as the customer
+   wrote it, quantity and unit as written) and deadline_date. This registers the order.
 3. Call inventory_agent with the exact catalog names of the registered order_items.
 4. If at least one item is AVAILABLE, call quoting_agent with the customer context.
 5. Then call sales_agent with the quote_id and the quote total to finalise the order. Always
@@ -1382,6 +1414,23 @@ def _parse_stated_deadline(request_text: str) -> Union[str, None]:
     return datetime.strptime(f"{month.title()} {day} {year}", "%B %d %Y").strftime("%Y-%m-%d")
 
 
+def _pricing_note() -> str:
+    """Customer-facing rationale for the price: list total, which bulk-discount tier applied and why."""
+    fulfillment = CURRENT_ORDER.get("fulfillment") or {}
+    if not fulfillment.get("booked_lines"):
+        return ""
+    quote = QUOTES[CURRENT_ORDER["quote_id"]]
+    rate, units = quote["discount_rate"], quote["total_units"]
+    tiers = ", ".join(f"{r:.0%} from {m:,} units" for m, r in sorted(BULK_DISCOUNT_TIERS) if r > 0)
+    if rate > 0:
+        threshold = max(m for m, r in BULK_DISCOUNT_TIERS if r == rate)
+        discount_text = f"{rate:.0%} bulk discount because the order has {units:,} units ({threshold:,}+ tier)"
+    else:
+        discount_text = f"no bulk discount, as the order has {units:,} units (discounts start at 500 units)"
+    return (f"\n\nPricing: catalog list price ${quote['list_total']:,.2f}; {discount_text}; "
+            f"total ${fulfillment['total_charged']:,.2f}, rounded to whole dollars. Bulk discounts: {tiers}.")
+
+
 def _unfulfilled_items_note() -> str:
     """Customer-safe list of everything requested but not supplied, with the reason for each."""
     notes = [f"- {entry['description']} ({entry['quantity']:,}): {entry['customer_reason']}"
@@ -1401,14 +1450,16 @@ def handle_customer_request(orchestrator: OrchestratorAgent, request_text: str) 
     """Run one customer request through the multi-agent system and return the customer reply.
 
     The request date (and the delivery deadline, when written as a date) is taken from the
-    request text by code, not by the LLM, and starts a new order that all agents share. Items
-    that could not be supplied are appended with their reasons, so the customer always gets one.
+    request text by code, not by the LLM, and starts a new order that all agents share. A pricing
+    rationale and the items that could not be supplied (with reasons) are appended by code, so
+    every reply explains the price and every refusal.
     """
     date_match = REQUEST_DATE_PATTERN.search(request_text)
     start_order(date_match.group(1) if date_match else datetime.now().strftime("%Y-%m-%d"))
     CURRENT_ORDER["stated_deadline"] = _parse_stated_deadline(request_text)
+    CURRENT_ORDER["request_text"] = request_text
     try:
-        return str(orchestrator.run(request_text)) + _unfulfilled_items_note()
+        return str(orchestrator.run(request_text)) + _pricing_note() + _unfulfilled_items_note()
     except Exception as exc:  # keep the test run going; the failure is logged, not shown to the customer
         print(f"ERROR while handling request: {exc}")
         return ("We're sorry, we could not process your request right now. "
@@ -1418,7 +1469,8 @@ def handle_customer_request(orchestrator: OrchestratorAgent, request_text: str) 
 # Run your test scenarios by writing them here. Make sure to keep track of them.
 
 def run_test_scenarios():
-
+    """Run every request in quote_requests_sample.csv through the multi-agent system and write
+    cash balance, inventory value and customer reply per request to test_results.csv."""
     print("Initializing Database...")
     init_database(db_engine)
     reset_session_state()

@@ -1,215 +1,258 @@
 request_id,request_date,cash_balance,inventory_value,response
-1,2025-04-01,45124.7,4875.3,"Your order has been successfully fulfilled with the following details for the ceremony:
+1,2025-04-01,45124.7,4875.3,"Your order has been successfully finalized for the ceremony. Here are the details:
+- **Glossy paper**: 200 sheets booked, total amount $40.00, delivery date set for **2025-04-01**.
+- **Cardstock**: 100 sheets booked, total amount $15.00, delivery date set for **2025-04-01**.
+- **Colored paper**: 100 sheets booked, total amount $10.00, delivery date set for **2025-04-01**.
 
-- **Glossy paper:** 200 sheets, Amount: $40.00
-- **Cardstock:** 100 sheets, Amount: $15.00
-- **Colored paper:** 100 sheets, Amount: $10.00
+**Total charged**: $65.00.
 
-**Total Charged:** $65.00
-**Delivery Date:** April 1, 2025
-**Order Reference:** Q-20250401-001
+All items will be delivered on the specified date. 
 
-All items will be delivered on the specified date."
-2,2025-04-03,45159.7,4875.3,"Your order for the hotel parade has been successfully placed! Here are the details:
+**Order Reference**: Q-20250401-001. Thank you for your order!
 
-- **Booked Items:**
-  - **500 sheets of colorful poster paper** - Amount: $118.75
-  - **300 rolls of party streamers** - Amount: $14.25
-- **Total Charged:** $133.00 (after a 5% bulk discount applied)
-- **Expected Delivery Date:** April 7, 2025
-- **Order Reference:** Q-20250403-002  
+Pricing: catalog list price $65.00; no bulk discount, as the order has 400 units (discounts start at 500 units); total $65.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units."
+2,2025-04-03,45159.7,4875.3,"Your order for the hotel parade has been successfully finalized. Here are the details:
 
-Please note that we were unable to fulfill the order for balloons as they are not part of our product catalog. Thank you for your understanding!
+- **Item:** 500 sheets of Poster paper - Amount: $118.75  
+- **Item:** 300 rolls of Party streamers - Amount: $14.25  
+- **Total Charged:** $133.00  
+- **Delivery Date:** April 7, 2025  
+- **Order Reference (Quote ID):** Q-20250403-002  
+
+All items will be delivered on the same date, ensuring you are well prepared for your parade!
+
+Pricing: catalog list price $140.00; 5% bulk discount because the order has 800 units (500+ tier); total $133.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - balloons (200): not part of our product catalog"
 3,2025-04-04,46739.5,4868.45,"Your order has been successfully finalized for the upcoming conference. Here are the details:
 
-- **Items Ordered:**
-  - A4 paper: 10,000 sheets for a total of **$425.00**
-  - Standard copy paper: 250,000 sheets for a total of **$8,500.00**
+1. **A4 paper**: 10,000 sheets for a total of **$425.00**
+2. **Standard copy paper**: 500 reams (250,000 sheets) for a total of **$8,500.00**
 
-- **Total Charged:** **$8,925.00** (including a 15% bulk discount)
-- **Expected Delivery Date:** April 11, 2025
-- **Order Reference (Quote ID):** Q-20250404-003
+- **Total Charged**: **$8,925.00** after a 15% bulk discount.
+- **Expected Delivery Date**: April 11, 2025.
+- **Order Reference (Quote ID)**: Q-20250404-003.
 
-Please note that the A3 paper request was unsupported as we do not carry that size. If you have any further requirements or need adjustments, feel free to reach out!
+Thank you for your order! All items are confirmed available and will be delivered on time.
+
+Pricing: catalog list price $10,500.00; 15% bulk discount because the order has 260,000 units (10,000+ tier); total $8,925.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - A3 paper (5,000): paper size not carried (we stock A4, letter and legal size)"
-4,2025-04-05,46797.44,4816.4,"Your order has been successfully fulfilled! Here are the details:
+4,2025-04-05,46797.44,4816.4,"Your order has been successfully finalized! Here are the details:
 
-- **500 sheets of Cardstock**: $71.47
-- **250 sheets of Standard copy paper**: $9.53
+- **Order Reference**: Q-20250405-004
 
-- **Total amount charged**: $81.00 (including a 5% bulk discount)
-- **Expected delivery date**: April 9, 2025
-- **Order reference**: Q-20250405-004
+- **Item**: Cardstock  
+  - **Quantity**: 500 sheets  
+  - **Amount**: $71.47  
 
-Thank you for your order!"
-5,2025-04-05,46865.94,4766.4,"Your order has been successfully finalized! Here are the details:
+- **Item**: Standard Copy Paper  
+  - **Quantity**: 250 sheets  
+  - **Amount**: $9.53  
 
-- **Items Booked:**  
-  1. **Colored paper**: 500 sheets, Amount: $47.41, Delivery Date: 2025-04-05  
-  2. **Cardstock**: 300 sheets, Amount: $42.67, Delivery Date: 2025-04-09  
-  3. **Decorative adhesive tape (washi tape)**: 200 rolls, Amount: $37.92, Delivery Date: 2025-04-09  
-- **Total Charged:** $128.00 (including a 5% discount)
-- **Overall Delivery Date:** The overall delivery date for the items is set for 2025-04-09.
-- **Order Reference:** Q-20250405-005
+- **Total Charged**: $81.00  
+- **Delivery Date**: April 9, 2025  
 
-Thank you for choosing us for your party supplies!"
-6,2025-04-06,46885.04,4766.4,"Your order has been successfully finalized! Here are the details:
+Thank you for your order! If you have any more requests or need further assistance, feel free to reach out!
 
-- **Construction paper**: 500 sheets for $33.18
-- **Standard copy paper**: 300 sheets for $11.38
-- **Cardstock**: 200 sheets for $28.44
+Pricing: catalog list price $85.00; 5% bulk discount because the order has 750 units (500+ tier); total $81.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units."
+5,2025-04-05,46865.94,4766.4,"Dear Customer,
 
-**Total Amount**: $73.00 (after a 5% discount)
-**Delivery Date**: April 10, 2025
-**Order Reference**: Q-20250406-006
+Your order has been successfully placed and finalized with the following details:
 
-All items will be delivered on the same date, and there are no rejected items in this order."
-7,2025-04-07,47250.64,4418.400000000001,"Thank you for your order! Here are the details for your exhibition supplies:
+1. **Colored Paper**: 500 sheets  - Amount: $47.41 - Delivery Date: April 5, 2025
+2. **Cardstock**: 300 sheets - Amount: $42.67 - Delivery Date: April 9, 2025
+3. **Decorative Adhesive Tape**: 200 rolls - Amount: $37.92 - Delivery Date: April 9, 2025
 
-- **Glossy paper:** 500 sheets - $90.00 (Delivery Date: April 11, 2025)
-- **Matte paper:** 1000 sheets - $162.00 (Delivery Date: April 11, 2025)
-- **Large poster paper (24x36 inches):** 300 sheets - $270.00 (Delivery Date: April 7, 2025)
-- **Cardstock:** 200 sheets - $27.00 (Delivery Date: April 11, 2025)
+**Total Charged**: $128.00 (including a bulk discount of 5%)
+**Order Reference (Quote ID)**: Q-20250405-005
 
-**Total charged:** $549.00 
+You can expect the colored paper to arrive on April 5, 2025, while the cardstock and washi tape will be delivered on April 9, 2025.
 
-Your order has been successfully finalized with quote ID **Q-20250407-007**. Please note that all items are available for delivery as scheduled."
-8,2025-04-07,47397.79,4413.900000000001,"Your large order for the upcoming ceremony has been successfully finalized. Here are the details:
+Thank you for choosing us for your party supplies!
 
-- **Glossy paper**: 500 sheets for **$90.00** (Delivery Date: April 11, 2025)
-- **Matte paper**: 1000 sheets for **$162.00** (Delivery Date: April 11, 2025)
-- **Colored paper**: 2000 sheets for **$180.00** (Delivery Date: April 14, 2025)
-- **Recycled paper**: 3000 sheets for **$216.00** (Delivery Date: April 14, 2025)
+Best regards,
 
-**Total Charged**: **$648.00** (including a 10% bulk discount)
+Pricing: catalog list price $135.00; 5% bulk discount because the order has 1,000 units (500+ tier); total $128.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units."
+6,2025-04-06,46885.04,4766.4,"Your order has been successfully processed! Here are the details:
 
-**Expected Delivery Date for all items**: April 14, 2025
+1. **Construction paper** - 500 sheets for **$33.18** 
+2. **Standard copy paper** - 300 sheets for **$11.38** 
+3. **Cardstock** - 200 sheets for **$28.44** 
 
-Your order reference is **Quote ID Q-20250407-008**. Thank you!"
-9,2025-04-07,47404.04,4413.900000000001,"Your order for the reception has been successfully fulfilled. Here are the details:
-- **Glossy paper**: 100 sheets for $19.56 (Delivery on April 7, 2025)
-- **Envelopes**: 50 packets for $2.44 (Delivery on April 8, 2025)
+**Total charged:** **$73.00** (including a 5% bulk discount)
+**Expected delivery date:** April 10, 2025
+**Order reference:** Q-20250406-006.
 
-**Total Amount Charged**: $22.00
-**Expected Delivery Date**: April 8, 2025
-**Order Reference**: Q-20250407-009
+Thank you for your order! If you have any further questions or need additional supplies, feel free to reach out.
 
-Please note that the Standard copy paper was unavailable and could not be included in the order.
+Pricing: catalog list price $77.00; 5% bulk discount because the order has 1,000 units (500+ tier); total $73.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units."
+7,2025-04-07,47250.64,4418.400000000001,"Thank you for your order! Here are the details for your large order of paper supplies for the exhibition:
+
+- **Glossy paper**: 500 sheets, Total: $90.00, Delivery Date: April 11, 2025
+- **Matte paper**: 1000 sheets, Total: $162.00, Delivery Date: April 11, 2025
+- **Large poster paper (24x36 inches)**: 300 sheets, Total: $270.00, Delivery Date: April 7, 2025
+- **Cardstock**: 200 sheets, Total: $27.00, Delivery Date: April 11, 2025
+
+**Total Amount Charged**: $549.00
+**Quote ID**: Q-20250407-007
+
+All items are confirmed for delivery, with the overall delivery scheduled for April 11, 2025. Thank you for choosing us!
+
+Pricing: catalog list price $610.00; 10% bulk discount because the order has 2,000 units (2,000+ tier); total $549.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units."
+8,2025-04-07,47397.79,4413.900000000001,"Your order for the upcoming school board ceremony has been successfully finalized. Here are the details:
+
+1. **Glossy paper**: 500 sheets, charged $90.00, delivery date April 11, 2025.
+2. **Matte paper**: 1000 sheets, charged $162.00, delivery date April 11, 2025.
+3. **Colored paper**: 2000 sheets, charged $180.00, delivery date April 14, 2025.
+4. **Recycled paper**: 3000 sheets, charged $216.00, delivery date April 14, 2025.
+
+The total amount charged for your order is **$648.00**. Your order reference is **Q-20250407-008**. Thank you for choosing us for your ceremony needs!
+
+Pricing: catalog list price $720.00; 10% bulk discount because the order has 6,500 units (2,000+ tier); total $648.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units."
+9,2025-04-07,47404.04,4413.900000000001,"Your order has been successfully fulfilled for the reception you are organizing. Here are the details:
+
+- **Items Ordered:**
+  - 100 sheets of Glossy paper for a total of $19.56 (Delivery Date: 2025-04-07)
+  - 50 packets of Envelopes for a total of $2.44 (Delivery Date: 2025-04-08)
+
+- **Total Charged:** $22.00
+- **Expected Delivery Date for Complete Order:** April 8, 2025
+- **Order Reference (Quote ID):** Q-20250407-009
+
+Please note that the 200 sheets of Standard copy paper were unavailable and thus were not included in this order.
+
+Pricing: catalog list price $22.50; no bulk discount, as the order has 150 units (discounts start at 500 units); total $22.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - Standard copy paper (200): cannot be delivered by 2025-04-10 (earliest possible delivery 2025-04-11)"
-13,2025-04-08,47428.58,4391.7,"Your order has been successfully fulfilled! Here are the details:
-- **Item:** Cardstock
-- **Quantity:** 200 sheets
-- **Amount Charged:** $30.00
-- **Total Charged:** $30.00
-- **Delivery Date:** April 9, 2025
-- **Quote ID:** Q-20250408-010
+13,2025-04-08,47428.58,4391.7,"Your order has been successfully finalized. You have ordered 200 sheets of Cardstock, totalling $30.00, with no discounts applied. The delivery is expected on April 9, 2025. Please note that the 500 sheets of Standard copy paper could not be supplied as they were unavailable for your requested date. Your order reference is Q-20250408-010.
 
-Please note that the 500 sheets of Standard copy paper could not be delivered by the required date. Thank you for your order!
+Pricing: catalog list price $30.00; no bulk discount, as the order has 200 units (discounts start at 500 units); total $30.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - Standard copy paper (500): cannot be delivered by 2025-04-10 (earliest possible delivery 2025-04-12)"
-12,2025-04-08,47425.63999999999,4413.900000000001,"Your order for party supplies has been successfully finalized! Here are the details:
-- **Cardstock**: 200 sheets at a total of $28.27, scheduled for delivery on **April 12, 2025**.
-- **Standard Copy Paper**: 500 sheets at a total of $18.85, scheduled for delivery on **April 12, 2025**.
-- **Paper Napkins**: 100 units at a total of $1.88, scheduled for delivery on **April 9, 2025**.
+12,2025-04-08,47425.63999999999,4413.900000000001,"Your order has been successfully fulfilled! Here are the details:
 
-Total amount charged: **$49.00** (including a 5% bulk discount).
+- **Cardstock**: 200 sheets at $28.27, delivery on April 12, 2025.
+- **Standard Copy Paper**: 500 sheets at $18.85, delivery on April 12, 2025.
+- **Paper Napkins**: 100 sheets at $1.88, delivery on April 9, 2025.
 
-Your order reference is: **Q-20250408-011**. Thank you for your order!"
-10,2025-04-08,47462.14,4413.900000000001,"Your order has been successfully placed and will be fulfilled as follows:
+**Total charged**: $49.00 after a 5% bulk discount applied.
 
-- **Glossy Paper**: 500 sheets - Amount: $95.17
-- **Cardstock**: 300 sheets - Amount: $42.83
+**Order Reference**: Q-20250408-011
 
-**Total Charged**: $138.00 (including a 5% bulk discount)
-**Expected Delivery Date**: April 12, 2025
-**Order Reference**: Q-20250408-012"
-11,2025-04-08,47500.340000000004,4413.900000000001,"Your order has been successfully processed! Here are the details:
+Thank you for your order! If you have any further requests, feel free to ask.
 
-- **Glossy Paper**: 500 sheets at $94.81
-- **Matte Paper**: 300 sheets at $51.19
-- **Total Amount Charged**: $146.00 (including a 5% bulk discount)
-- **Expected Delivery Date**: April 12, 2025
-- **Order Reference**: Q-20250408-013
+Pricing: catalog list price $52.00; 5% bulk discount because the order has 800 units (500+ tier); total $49.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units."
+10,2025-04-08,47462.14,4413.900000000001,"Your order has been successfully placed! Here are the details:
 
-Thank you for your order, and if you need anything else, feel free to ask!"
-14,2025-04-09,47518.840000000004,4413.900000000001,"Your order has been successfully processed! You have ordered 500 sheets of Cardstock for your upcoming performance, which will be delivered on April 13, 2025. The total amount charged for this order is $71.00, including a 5% bulk discount. Your order reference is Q-20250409-014.
+- **Items Ordered:**
+  - 500 sheets of glossy paper: $95.17
+  - 300 sheets of sturdy cardstock: $42.83
+
+- **Total Charged:** $138.00 (including 5% bulk discount)
+- **Expected Delivery Date:** April 12, 2025
+- **Order Reference:** Q-20250408-012
+
+Both items will be delivered on time for your upcoming show. Thank you for choosing us!
+
+Pricing: catalog list price $145.00; 5% bulk discount because the order has 800 units (500+ tier); total $138.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units."
+11,2025-04-08,47500.340000000004,4413.900000000001,"Your order has been successfully finalized! 
+
+- **Items Ordered:**
+  - 500 sheets of Glossy paper at $94.81
+  - 300 sheets of Matte paper at $51.19
+- **Total Charge:** $146.00 (including a 5% bulk discount)
+- **Expected Delivery Date:** April 12, 2025
+- **Order Reference:** Q-20250408-013
+
+Thank you for choosing us for your exhibition supplies!
+
+Pricing: catalog list price $154.00; 5% bulk discount because the order has 800 units (500+ tier); total $146.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units."
+14,2025-04-09,47518.840000000004,4413.900000000001,"Your order has been successfully fulfilled! You will receive 500 sheets of cardstock, totaling $71.00, with a 5% bulk discount applied. The expected delivery date is April 13, 2025. The quote ID for your order is Q-20250409-014. Please note that your requested items of A4 paper and poster paper (2000 sheets in various colors) are unavailable by the required date. If you need any further assistance or modifications regarding this order, feel free to contact us!
+
+Pricing: catalog list price $75.00; 5% bulk discount because the order has 500 units (500+ tier); total $71.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - A4 paper (5,000): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-16)
 - Poster paper (2,000): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-16)"
-15,2025-04-12,47518.840000000004,4413.900000000001,"Unfortunately, both items in your large order are currently unavailable due to delivery delays. 
-- A4 paper (10,000 sheets) and colored paper (5,000 sheets) cannot be delivered by the required date of April 15, 2025, as the earliest possible delivery for both is April 19, 2025.
+15,2025-04-12,47518.840000000004,4413.900000000001,"Thank you for your order request for high-quality paper supplies for your upcoming demonstration. Unfortunately, both the A4 white paper (10,000 sheets) and colored paper (5,000 sheets) are currently unavailable for the requested delivery date of April 15, 2025. The earliest possible delivery for both items is April 19, 2025.
 
-You may want to consider alternative suppliers or adjust your order. Thank you for your understanding.
+Additionally, we regret to inform you that the cardboard for signage is not part of our product catalog.
+
+Please let us know if you would like to explore alternative items or if you need assistance with later delivery options.
 
 Items we could not supply:
 - cardboard for signage (250,000): not part of our product catalog
 - A4 paper (10,000): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-19)
 - Colored paper (5,000): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-19)"
-16,2025-04-13,47618.840000000004,4313.900000000001,"Your order has been successfully placed for the school assembly event. Here are the details:
+16,2025-04-13,47618.840000000004,4313.900000000001,"Your order for 100 sheets of Large poster paper has been successfully placed and will be delivered by April 13, 2025. The total amount charged for this order is $100, with the quote ID Q-20250413-015. Please note that other items requested could not be supplied in time.
 
-- **Item booked**: Large poster paper (24x36 inches)
-- **Quantity ordered**: 100 sheets
-- **Total amount charged**: $100.00
-- **Delivery date**: April 13, 2025
-
-Unfortunately, the Standard copy paper and Construction paper were unavailable for the requested delivery date. If you need assistance with these items in the future, please let us know! 
-
-Order reference: Q-20250413-015.
+Pricing: catalog list price $100.00; no bulk discount, as the order has 100 units (discounts start at 500 units); total $100.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - Standard copy paper (500): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-17)
 - Construction paper (200): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-17)"
-17,2025-04-14,47666.840000000004,4263.900000000001,"Your order for 500 biodegradable paper plates has been successfully processed. Here's a summary:
-- **Items Ordered**: 500 Paper plates
-- **Total Amount Charged**: $48.00 (includes a 5% bulk discount)
-- **Expected Delivery Date**: April 14, 2025
-- **Order Reference**: Q-20250414-016
+17,2025-04-14,47666.840000000004,4263.900000000001,"Thank you for your order! We have successfully booked 500 paper plates for your reception. Here are the details:
+- **Item:** Paper Plates
+- **Quantity:** 500
+- **Total amount:** $48.00 (including a 5% bulk discount)
+- **Expected delivery date:** April 14, 2025
+- **Order Reference:** Q-20250414-016
 
-Please note that the other requested items were unavailable for the specified delivery date. Thank you for choosing us for your reception supplies!
+Please note that unfortunately, the other items in your order are unavailable and could not be fulfilled. If you need any assistance or further supplies, feel free to reach out!
+
+Pricing: catalog list price $50.00; 5% bulk discount because the order has 500 units (500+ tier); total $48.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - Standard copy paper (1,000): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-18)
 - Colored paper (500): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-18)
 - Paper napkins (2,000): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-21)
 - Paper cups (1,000): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-18)"
-18,2025-04-14,47682.85,4249.599999999999,"Your order has been successfully processed! You will receive 200 sheets of Colored paper, with an expected delivery date of April 15, 2025. The total charge for this order is $20.00. Your order reference is Q-20250414-017. Please note that the requested Cardstock and Standard copy paper were unavailable for delivery by the requested date.
+18,2025-04-14,47682.85,4249.599999999999,"Your order for the ceremony has been successfully placed! Here are the details:
+- **Item:** Colored paper
+- **Quantity:** 200 sheets
+- **Total Amount Charged:** $20.00
+- **Delivery Date:** April 15, 2025
+- **Order Reference:** Q-20250414-017
+
+Please note that the Cardstock and Standard copy paper were unavailable for timely delivery. If you need further assistance or have any questions, feel free to ask!
+
+Pricing: catalog list price $20.00; no bulk discount, as the order has 200 units (discounts start at 500 units); total $20.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - Cardstock (500): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-18)
 - Standard copy paper (1,000): cannot be delivered by 2025-04-15 (earliest possible delivery 2025-04-18)"
-19,2025-04-15,47719.85,4249.599999999999,"Your order has been successfully placed for the upcoming exhibition. Here are the details:
+19,2025-04-15,47719.85,4249.599999999999,"Thank you for your order! You have successfully ordered 1000 sheets of Cardstock for your exhibition. Here are the details:
+- **Item**: Cardstock
+- **Quantity**: 1000 sheets
+- **Bulk Discount**: 5%
+- **Total Charged**: $142.00
+- **Expected Delivery Date**: April 19, 2025
+- **Order Reference**: Q-20250415-018
 
-- **Item:** Cardstock  
-- **Quantity:** 1000 sheets  
-- **Amount Charged:** $142.00  
-- **Total Charged:** $142.00 (after applying a 5% bulk discount)  
-- **Expected Delivery Date:** April 19, 2025  
-- **Order Reference:** Q-20250415-018  
+Please note that the requests for A4 glossy paper and A3 matte paper could not be fulfilled in time. If you have any further questions or adjustments, feel free to reach out!
 
-Please note that the requested Glossy and Matte papers were unavailable and could not be supplied. If you have any further questions or need additional items, feel free to reach out!
+Pricing: catalog list price $150.00; 5% bulk discount because the order has 1,000 units (500+ tier); total $142.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - Glossy paper (2,000): cannot be delivered by 2025-04-20 (earliest possible delivery 2025-04-22)
 - Matte paper (1,500): cannot be delivered by 2025-04-20 (earliest possible delivery 2025-04-22)"
-20,2025-04-17,47969.85,4249.599999999999,"Your order has been successfully placed for the upcoming concert. Here are the details:
+20,2025-04-17,47969.85,4249.599999999999,"Thank you for your order! We have successfully finalized your request for the upcoming concert. Here are the details:
 
-1. **Flyers**: 5000 units - $675.00
-2. **Poster paper**: 2000 units - $450.00
+- **Flyers**: 5000 units at $0.15 each, totaling **$675** (including a bulk discount).
+- **Poster paper**: 2000 units at $0.25 each, totaling **$450** (including a bulk discount).
 
-**Total Amount Charged**: $1125.00 (including a 10% bulk discount applied)
-**Expected Delivery Date**: April 24, 2025
-**Order Reference**: Q-20250417-019
+**Total Amount Charged**: **$1125**
+**Expected Delivery Date**: April 24, 2025.
+**Order Reference**: Q-20250417-019.
 
-Please note that the order for tickets could not be fulfilled, as they are not part of our product catalog. Thank you for your order!
+Please note that the tickets requested could not be supplied as they are not part of our product catalog. Thank you for choosing us!
+
+Pricing: catalog list price $1,250.00; 10% bulk discount because the order has 7,000 units (2,000+ tier); total $1,125.00, rounded to whole dollars. Bulk discounts: 5% from 500 units, 10% from 2,000 units, 15% from 10,000 units.
 
 Items we could not supply:
 - tickets (10,000): not part of our product catalog"
